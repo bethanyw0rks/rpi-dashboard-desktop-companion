@@ -2,32 +2,42 @@ import os
 import platform
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any, Dict, List
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
+
+
 def get_cors_allowed_origins() -> List[str]:
     raw_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
-    if not raw_origins:
-        return []
+    if raw_origins:
+        return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 
-    return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost",
+        "http://127.0.0.1",
+    ]
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Desktop Companion API", version="0.1.0")
 
     allowed_origins = get_cors_allowed_origins()
-    if allowed_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=allowed_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/health")
     def health_check() -> Dict[str, str]:

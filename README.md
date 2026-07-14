@@ -59,7 +59,13 @@ python3 -m pip install -r requirements.txt
 
 ### 4. Configure CORS (optional)
 
-If your frontend or another service will call this API from a browser, set a comma-separated list of allowed origins before starting the server:
+If your frontend or another service will call this API from a browser, create a `.env` file in the project root with a comma-separated list of allowed origins:
+
+```env
+CORS_ALLOWED_ORIGINS=http://localhost:3000,https://dashboard.example.com,https://admin.example.com
+```
+
+The app loads this file automatically using `python-dotenv` when it starts. If you prefer to set the value in your shell instead, you can still do so, but the `.env` file is the recommended approach.
 
 On macOS or Linux:
 
@@ -73,7 +79,7 @@ On Windows:
 $env:CORS_ALLOWED_ORIGINS="https://dashboard.example.com,https://admin.example.com"
 ```
 
-If you leave this unset, the API will not add CORS headers.
+If you leave this unset, the API will default to allowing common local development origins such as `http://localhost:3000`.
 
 ### 5. Run the API
 

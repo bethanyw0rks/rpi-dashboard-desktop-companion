@@ -42,3 +42,20 @@ def test_cors_origin_is_configured_from_environment(monkeypatch):
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "https://dashboard.example.com"
+
+
+def test_localhost_origin_is_allowed_by_default(monkeypatch):
+    monkeypatch.delenv("CORS_ALLOWED_ORIGINS", raising=False)
+
+    app = main_module.create_app()
+    test_client = TestClient(app)
+    response = test_client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
