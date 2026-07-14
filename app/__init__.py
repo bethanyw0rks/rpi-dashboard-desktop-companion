@@ -1,0 +1,1 @@
+"""Desktop companion API package."""
