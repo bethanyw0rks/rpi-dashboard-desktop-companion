@@ -57,7 +57,25 @@ If `pip` is not recognized, try:
 python3 -m pip install -r requirements.txt
 ```
 
-### 4. Run the API
+### 4. Configure CORS (optional)
+
+If your frontend or another service will call this API from a browser, set a comma-separated list of allowed origins before starting the server:
+
+On macOS or Linux:
+
+```bash
+export CORS_ALLOWED_ORIGINS="https://dashboard.example.com,https://admin.example.com"
+```
+
+On Windows:
+
+```powershell
+$env:CORS_ALLOWED_ORIGINS="https://dashboard.example.com,https://admin.example.com"
+```
+
+If you leave this unset, the API will not add CORS headers.
+
+### 5. Run the API
 
 Start the local API server with:
 
@@ -67,7 +85,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8010
 
 This will start the app so it can be reached from other devices on your local network.
 
-### 5. Test it locally
+### 6. Test it locally
 
 In another terminal window, you can test the server with:
 
