@@ -2,12 +2,28 @@ import os
 import platform
 import subprocess
 import sys
+import threading
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+try:
+    from Foundation import NSDate
+    from EventKit import (
+        EKAuthorizationStatusAuthorized,
+        EKAuthorizationStatusNotDetermined,
+        EKEntityTypeEvent,
+        EKEventStore,
+    )
+except ImportError:
+    EKEventStore = None
+    EKAuthorizationStatusAuthorized = None
+    EKAuthorizationStatusNotDetermined = None
+    EKEntityTypeEvent = None
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -102,3 +118,161 @@ end tell
         "pid": None,
         "platform": platform.system(),
     }
+
+
+def _create_event_store() -> Optional[EKEventStore]:
+    if EKEventStore is None:
+        return None
+
+    status = EKEventStore.authorizationStatusForEntityType_(EKEntityTypeEvent)
+    store = EKEventStore.alloc().init()
+
+    if status == EKAuthorizationStatusAuthorized:
+        return store
+
+    if status == EKAuthorizationStatusNotDetermined:
+        access_granted = threading.Event()
+        result = {"granted": False}
+
+        def completion_handler(granted, error):
+            result["granted"] = bool(granted)
+            access_granted.set()
+
+        store.requestAccessToEntityType_completion_(EKEntityTypeEvent, completion_handler)
+        access_granted.wait(5.0)
+
+        if result["granted"]:
+            return store
+
+    return None
+
+
+def _format_event_date(date_value: Any) -> Optional[str]:
+    try:
+        return datetime.fromtimestamp(date_value.timeIntervalSince1970()).isoformat()
+    except Exception:
+        return None
+
+
+def _is_all_day(event: Any) -> bool:
+    if hasattr(event, "isAllDay"):
+        return bool(event.isAllDay())
+    if hasattr(event, "allDay"):
+        return bool(event.allDay())
+    return False
+
+
+def _event_start_timestamp(event: Any) -> float:
+    start_date = event.startDate()
+    if start_date is None:
+        return float("inf")
+    return float(start_date.timeIntervalSince1970())
+
+
+def get_next_calendar_event() -> Dict[str, Any]:
+    """Return the next non-all-day calendar event for today using EventKit.
+
+    Returns an empty dict when no event is found, Calendar access is denied,
+    the platform is not macOS, or EventKit is unavailable.
+    """
+    if sys.platform != "darwin" or EKEventStore is None:
+        return {"summary": None, "start": None, "end": None, "location": None, "calendar": None}
+
+    store = _create_event_store()
+    if store is None:
+        return {"summary": None, "start": None, "end": None, "location": None, "calendar": None}
+
+    now = datetime.now()
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+
+    start_date = NSDate.dateWithTimeIntervalSince1970_(start_of_day.timestamp())
+    end_date = NSDate.dateWithTimeIntervalSince1970_(end_of_day.timestamp())
+
+    predicate = store.predicateForEventsWithStartDate_endDate_calendars_(start_date, end_date, None)
+    events = store.eventsMatchingPredicate_(predicate)
+    if not events:
+        return {"summary": None, "start": None, "end": None, "location": None, "calendar": None}
+
+    upcoming_events = [
+        event
+        for event in events
+        if not _is_all_day(event) and _event_start_timestamp(event) >= now.timestamp()
+    ]
+
+    if not upcoming_events:
+        return {"summary": None, "start": None, "end": None, "location": None, "calendar": None}
+
+    next_event = min(upcoming_events, key=event_start_timestamp)
+
+    return {
+        "summary": next_event.title() if next_event.title() else None,
+        "start": _format_event_date(next_event.startDate()),
+        "end": _format_event_date(next_event.endDate()),
+        "location": next_event.location() or None,
+        "calendar": next_event.calendar().title() if next_event.calendar() else None,
+    }
+
+
+def _event_end_timestamp(event: Any) -> float:
+    end_date = event.endDate()
+    if end_date is None:
+        return float("inf")
+    return float(end_date.timeIntervalSince1970())
+
+
+def get_current_calendar_event() -> Dict[str, Any]:
+    """Return the current non-all-day calendar event that is underway right now."""
+    if sys.platform != "darwin" or EKEventStore is None:
+        return {"summary": None, "start": None, "end": None, "location": None, "calendar": None}
+
+    store = _create_event_store()
+    if store is None:
+        return {"summary": None, "start": None, "end": None, "location": None, "calendar": None}
+
+    now = datetime.now()
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+
+    start_date = NSDate.dateWithTimeIntervalSince1970_(start_of_day.timestamp())
+    end_date = NSDate.dateWithTimeIntervalSince1970_(end_of_day.timestamp())
+
+    predicate = store.predicateForEventsWithStartDate_endDate_calendars_(start_date, end_date, None)
+    events = store.eventsMatchingPredicate_(predicate)
+    if not events:
+        return {"summary": None, "start": None, "end": None, "location": None, "calendar": None}
+
+    current_events = [
+        event
+        for event in events
+        if not _is_all_day(event)
+        and event.startDate() is not None
+        and event.endDate() is not None
+        and float(event.startDate().timeIntervalSince1970()) <= now.timestamp()
+        and float(event.endDate().timeIntervalSince1970()) > now.timestamp()
+    ]
+
+    if not current_events:
+        return {"summary": None, "start": None, "end": None, "location": None, "calendar": None}
+
+    current_event = min(current_events, key=_event_end_timestamp)
+
+    return {
+        "summary": current_event.title() if current_event.title() else None,
+        "start": _format_event_date(current_event.startDate()),
+        "end": _format_event_date(current_event.endDate()),
+        "location": current_event.location() or None,
+        "calendar": current_event.calendar().title() if current_event.calendar() else None,
+    }
+
+
+@app.get("/api/next-calendar")
+def next_calendar() -> Dict[str, Any]:
+    """API endpoint returning the next non-all-day calendar event for today."""
+    return get_next_calendar_event()
+
+
+@app.get("/api/calendar-now")
+def calendar_now() -> Dict[str, Any]:
+    """API endpoint returning the current non-all-day calendar event underway now."""
+    return get_current_calendar_event()

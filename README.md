@@ -34,14 +34,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-On Windows:
-
-```powershell
-py -m venv .venv
-.venv\Scripts\activate
-```
-
-If you are new to this, the virtual environment is created in a folder named `.venv` inside the project. You will usually activate it each time you work on the project.
+The virtual environment is created in a folder named `.venv` inside the project. You will usually activate it each time you work on the project.
 
 ### 3. Install dependencies
 
@@ -62,21 +55,7 @@ python3 -m pip install -r requirements.txt
 If your frontend or another service will call this API from a browser, create a `.env` file in the project root with a comma-separated list of allowed origins:
 
 ```env
-CORS_ALLOWED_ORIGINS=http://localhost:3000,https://dashboard.example.com,https://admin.example.com
-```
-
-The app loads this file automatically using `python-dotenv` when it starts. If you prefer to set the value in your shell instead, you can still do so, but the `.env` file is the recommended approach.
-
-On macOS or Linux:
-
-```bash
-export CORS_ALLOWED_ORIGINS="https://dashboard.example.com,https://admin.example.com"
-```
-
-On Windows:
-
-```powershell
-$env:CORS_ALLOWED_ORIGINS="https://dashboard.example.com,https://admin.example.com"
+CORS_ALLOWED_ORIGINS=http://localhost:3000,https://bethanyw0rks.github.io
 ```
 
 If you leave this unset, the API will default to allowing common local development origins such as `http://localhost:3000`.
@@ -109,12 +88,28 @@ You should receive a JSON response like:
 
 - `GET /health` returns a simple health payload.
 - `GET /api/active-app` returns the current frontmost application details, including its name, bundle identifier, process ID, and platform.
+- `GET /api/next-calendar` returns the next upcoming calendar event from your Apple Calendar.
+- `GET /api/calendar-now` returns the currently underway calendar event, if one is active now.
 
 ## Useful tips
 
 - If you close the terminal where the server is running, the API will stop.
 - To keep it running after a reboot, you may want to set it up as a background service or launch agent, depending on your operating system.
 - If you are using a Raspberry Pi or another device on the same network, you can access the API using the desktop computer’s local IP address and port `8010`.
+
+- Calendar access: The `next-calendar` endpoint now uses macOS EventKit via `pyobjc-framework-EventKit`. macOS will prompt you to grant Calendar permission the first time the endpoint is used; allow access in System Settings → Privacy & Security → Calendars. If permission is denied or EventKit is unavailable, the endpoint will return empty fields for events.
+
+- To trigger the permission prompt and verify access, run the server from your virtual environment and call the endpoint:
+
+```bash
+source .venv/bin/activate
+uvicorn app.main:app --host 0.0.0.0 --port 8010
+
+# In another terminal, trigger the endpoint which will prompt for Calendar access
+curl http://127.0.0.1:8010/api/next-calendar
+```
+
+- The macOS permission dialog will show the process requesting access (for example `Terminal` or `python`). You can review or revoke Calendar permissions at System Settings → Privacy & Security → Calendars.
 
 ## macOS launch agent (optional)
 

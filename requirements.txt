@@ -3,3 +3,4 @@ uvicorn[standard]>=0.30.0
 pytest>=8.3.0
 httpx2>=0.28.0
 python-dotenv>=1.0.1
+pyobjc-framework-EventKit>=10.0

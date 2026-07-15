@@ -24,6 +24,31 @@ def test_active_app_endpoint_returns_expected_shape():
     assert "platform" in payload
 
 
+def test_calendar_now_endpoint_returns_expected_shape(monkeypatch):
+    monkeypatch.setattr(
+        main_module,
+        "get_current_calendar_event",
+        lambda: {
+            "summary": None,
+            "start": None,
+            "end": None,
+            "location": None,
+            "calendar": None,
+        },
+    )
+
+    response = client.get("/api/calendar-now")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "summary": None,
+        "start": None,
+        "end": None,
+        "location": None,
+        "calendar": None,
+    }
+
+
 def test_cors_origin_is_configured_from_environment(monkeypatch):
     monkeypatch.setenv(
         "CORS_ALLOWED_ORIGINS",
