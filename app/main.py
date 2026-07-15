@@ -162,6 +162,60 @@ def _is_all_day(event: Any) -> bool:
     return False
 
 
+def get_calendar_filter() -> Optional[str]:
+    raw_value = os.getenv("CALENDAR_FILTER", "").strip()
+    return raw_value or None
+
+
+def _calendar_matches_filter(calendar: Any, filter_value: Optional[str]) -> bool:
+    if not filter_value:
+        return True
+
+    filter_value = filter_value.casefold()
+    candidates: List[str] = []
+
+    if calendar is None:
+        return False
+
+    title = None
+    if hasattr(calendar, "title"):
+        try:
+            title = calendar.title()
+        except Exception:
+            title = None
+
+    if title:
+        candidates.append(title)
+
+    source = None
+    if hasattr(calendar, "source"):
+        try:
+            source = calendar.source()
+        except Exception:
+            source = None
+
+    if source is not None:
+        for attr_name in ("accountDescription", "title", "identifier"):
+            if hasattr(source, attr_name):
+                try:
+                    value = getattr(source, attr_name)()
+                except Exception:
+                    value = None
+                if value:
+                    candidates.append(value)
+
+    for attr_name in ("calendarIdentifier", "identifier"):
+        if hasattr(calendar, attr_name):
+            try:
+                value = getattr(calendar, attr_name)()
+            except Exception:
+                value = None
+            if value:
+                candidates.append(value)
+
+    return any(filter_value in candidate.casefold() for candidate in candidates if isinstance(candidate, str))
+
+
 def _event_start_timestamp(event: Any) -> float:
     start_date = event.startDate()
     if start_date is None:
@@ -194,10 +248,13 @@ def get_next_calendar_event() -> Dict[str, Any]:
     if not events:
         return {"summary": None, "start": None, "end": None, "location": None, "calendar": None}
 
+    calendar_filter = get_calendar_filter()
     upcoming_events = [
         event
         for event in events
-        if not _is_all_day(event) and _event_start_timestamp(event) >= now.timestamp()
+        if not _is_all_day(event)
+        and _event_start_timestamp(event) >= now.timestamp()
+        and _calendar_matches_filter(event.calendar(), calendar_filter)
     ]
 
     if not upcoming_events:
@@ -242,6 +299,7 @@ def get_current_calendar_event() -> Dict[str, Any]:
     if not events:
         return {"summary": None, "start": None, "end": None, "location": None, "calendar": None}
 
+    calendar_filter = get_calendar_filter()
     current_events = [
         event
         for event in events
@@ -250,6 +308,7 @@ def get_current_calendar_event() -> Dict[str, Any]:
         and event.endDate() is not None
         and float(event.startDate().timeIntervalSince1970()) <= now.timestamp()
         and float(event.endDate().timeIntervalSince1970()) > now.timestamp()
+        and _calendar_matches_filter(event.calendar(), calendar_filter)
     ]
 
     if not current_events:
@@ -264,6 +323,46 @@ def get_current_calendar_event() -> Dict[str, Any]:
         "location": current_event.location() or None,
         "calendar": current_event.calendar().title() if current_event.calendar() else None,
     }
+
+
+def get_calendar_debug_info() -> Dict[str, Any]:
+    status_code = None
+    status_name = None
+    store_created = False
+    exception = None
+
+    if sys.platform != "darwin":
+        status_name = "not macOS"
+    elif EKEventStore is None:
+        status_name = "EventKit unavailable"
+    else:
+        try:
+            status_code = EKEventStore.authorizationStatusForEntityType_(EKEntityTypeEvent)
+            if status_code == EKAuthorizationStatusAuthorized:
+                status_name = "authorized"
+            elif status_code == EKAuthorizationStatusNotDetermined:
+                status_name = "not_determined"
+            else:
+                status_name = str(status_code)
+
+            store = _create_event_store()
+            store_created = store is not None
+        except Exception as exc:
+            exception = str(exc)
+
+    return {
+        "platform": platform.system(),
+        "eventkit_available": EKEventStore is not None,
+        "authorization_status": status_name,
+        "store_created": store_created,
+        "calendar_filter": get_calendar_filter(),
+        "exception": exception,
+    }
+
+
+@app.get("/api/calendar-debug")
+def calendar_debug() -> Dict[str, Any]:
+    return get_calendar_debug_info()
 
 
 @app.get("/api/calendar-next")

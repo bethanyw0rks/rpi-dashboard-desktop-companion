@@ -141,6 +141,110 @@ def test_next_calendar_endpoint_returns_event_shape(monkeypatch):
     assert payload["end"] is not None
 
 
+def test_calendar_filter_uses_environment_variable(monkeypatch):
+    monkeypatch.setenv("CALENDAR_FILTER", "bethany@coursearc.com")
+
+    class FakeDate:
+        def __init__(self, value):
+            self._value = value
+
+        def timeIntervalSince1970(self):
+            return self._value.timestamp()
+
+    class FakeSource:
+        def __init__(self, account_description):
+            self._account_description = account_description
+
+        def accountDescription(self):
+            return self._account_description
+
+    class FakeCalendar:
+        def __init__(self, title, account_description):
+            self._title = title
+            self._source = FakeSource(account_description)
+
+        def title(self):
+            return self._title
+
+        def source(self):
+            return self._source
+
+    class FakeEvent:
+        def __init__(self, title, start, end, calendar):
+            self._title = title
+            self._start = start
+            self._end = end
+            self._calendar = calendar
+
+        def startDate(self):
+            return self._start
+
+        def endDate(self):
+            return self._end
+
+        def title(self):
+            return self._title
+
+        def location(self):
+            return None
+
+        def calendar(self):
+            return self._calendar
+
+        def isAllDay(self):
+            return False
+
+    class FakeStore:
+        @classmethod
+        def authorizationStatusForEntityType_(cls, entity_type):
+            return 1
+
+        @classmethod
+        def alloc(cls):
+            return cls()
+
+        def init(self):
+            return self
+
+        def requestAccessToEntityType_completion_(self, entity_type, callback):
+            callback(True, None)
+
+        def predicateForEventsWithStartDate_endDate_calendars_(self, start_date, end_date, calendars):
+            return (start_date, end_date)
+
+        def eventsMatchingPredicate_(self, predicate):
+            start_time = datetime.now() + timedelta(hours=1)
+            end_time = datetime.now() + timedelta(hours=2)
+            return [
+                FakeEvent(
+                    "Coworker event",
+                    FakeDate(start_time),
+                    FakeDate(end_time),
+                    FakeCalendar("Work", "coworker@example.com"),
+                ),
+                FakeEvent(
+                    "Bethany event",
+                    FakeDate(start_time + timedelta(hours=1)),
+                    FakeDate(end_time + timedelta(hours=1)),
+                    FakeCalendar("Personal", "bethany@coursearc.com"),
+                ),
+            ]
+
+    monkeypatch.setattr(main_module.sys, "platform", "darwin", raising=False)
+    monkeypatch.setattr(main_module, "EKEventStore", FakeStore, raising=False)
+    monkeypatch.setattr(main_module, "EKAuthorizationStatusAuthorized", 1, raising=False)
+    monkeypatch.setattr(main_module, "EKAuthorizationStatusNotDetermined", 0, raising=False)
+    monkeypatch.setattr(main_module, "EKEntityTypeEvent", object(), raising=False)
+    monkeypatch.setattr(main_module, "NSDate", type("NSDate", (), {"dateWithTimeIntervalSince1970_": classmethod(lambda cls, timestamp: timestamp)}), raising=False)
+
+    response = client.get("/api/calendar-next")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"] == "Bethany event"
+    assert payload["calendar"] == "Personal"
+
+
 def test_cors_origin_is_configured_from_environment(monkeypatch):
     monkeypatch.setenv(
         "CORS_ALLOWED_ORIGINS",
