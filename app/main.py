@@ -203,7 +203,7 @@ def get_next_calendar_event() -> Dict[str, Any]:
     if not upcoming_events:
         return {"summary": None, "start": None, "end": None, "location": None, "calendar": None}
 
-    next_event = min(upcoming_events, key=event_start_timestamp)
+    next_event = min(upcoming_events, key=_event_start_timestamp)
 
     return {
         "summary": next_event.title() if next_event.title() else None,
@@ -266,7 +266,7 @@ def get_current_calendar_event() -> Dict[str, Any]:
     }
 
 
-@app.get("/api/next-calendar")
+@app.get("/api/calendar-next")
 def next_calendar() -> Dict[str, Any]:
     """API endpoint returning the next non-all-day calendar event for today."""
     return get_next_calendar_event()
